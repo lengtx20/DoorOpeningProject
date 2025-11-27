@@ -5,7 +5,6 @@ Summary: Template RL environments for Unitree Robots
 Author: Unitree Robotics
 Author-email: support@unitree.com
 License: BSD-3-Clause
-License-File: LICENSE
 Requires-Dist: isaacgym
 Requires-Dist: rsl-rl
 Requires-Dist: matplotlib

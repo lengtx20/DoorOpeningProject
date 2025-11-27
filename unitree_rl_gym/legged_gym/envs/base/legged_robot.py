@@ -1,8 +1,31 @@
+# --- numpy.typing.NDArray Shim for old numpy versions ---
+import numpy as _np
+try:
+    import numpy.typing as _npt
+    has_ndarray = hasattr(_npt, "NDArray")
+except Exception:
+    has_ndarray = False
+
+if not has_ndarray:
+    import types as _types
+
+    class _NDArrayShim:
+        def __class_getitem__(cls, item):
+            return cls
+
+    if not hasattr(_np, "typing"):
+        _np.typing = _types.SimpleNamespace()
+
+    _np.typing.NDArray = _NDArrayShim
+# ---------------------------------------------------------
+
+
 from legged_gym import LEGGED_GYM_ROOT_DIR, envs
 import time
 from warnings import WarningMessage
 import numpy as np
 import os
+import math
 
 from isaacgym.torch_utils import *
 from isaacgym import gymtorch, gymapi, gymutil
@@ -16,6 +39,7 @@ from legged_gym.envs.base.base_task import BaseTask
 from legged_gym.utils.math import wrap_to_pi
 from legged_gym.utils.isaacgym_utils import get_euler_xyz as get_euler_xyz_in_tensor
 from legged_gym.utils.helpers import class_to_dict
+from isaacgym.torch_utils import quat_rotate
 from .legged_robot_config import LeggedRobotCfg
 
 class LeggedRobot(BaseTask):
@@ -86,6 +110,7 @@ class LeggedRobot(BaseTask):
         """
         self.gym.refresh_actor_root_state_tensor(self.sim)
         self.gym.refresh_net_contact_force_tensor(self.sim)
+        self.gym.render_all_camera_sensors(self.sim)    # need to get photo
 
         self.episode_length_buf += 1
         self.common_step_counter += 1
@@ -108,12 +133,73 @@ class LeggedRobot(BaseTask):
         
         if self.cfg.domain_rand.push_robots:
             self._push_robots()
+        
+        # reset camera location
+        if self.init_done:
+            for i in range(self.num_envs):
+                base_pos = self.base_pos[i]
+                base_quat = self.base_quat[i].unsqueeze(0)
+                # d435_offset = torch.tensor([0.0576235, 0.01753, 0.41987], device=self.device)
+                d435_offset = torch.tensor([0.0576235, 0.0, 0.41987], device=self.device)
+                # torso_offset = torch.tensor([0, 0, 0.153719], device=self.device)
+                torso_offset = torch.tensor([0, 0, 0.0], device=self.device)
+                torso_pos = base_pos + torso_offset
+                ego_cam_pos = gymapi.Vec3(
+                    float(torso_pos[0] + d435_offset[0]),
+                    float(torso_pos[1] + d435_offset[1]),
+                    float(torso_pos[2] + d435_offset[2])
+                )
+                pitch = 0.8307767
+                forward_local = torch.tensor([math.cos(pitch), 0, -math.sin(pitch)], device=self.device)
+                forward_local = forward_local.unsqueeze(0) 
+                forward_world = quat_rotate(base_quat, forward_local)
+                forward_world = forward_world.squeeze(0)
+                ego_cam_target = gymapi.Vec3(
+                    float(ego_cam_pos.x + forward_world[0]),
+                    float(ego_cam_pos.y + forward_world[1]),
+                    float(ego_cam_pos.z + forward_world[2])
+                )
+                self.gym.set_camera_location(self.ego_cameras[i], self.envs[i], ego_cam_pos, ego_cam_target)
+                # print(f"[DEBUG] camera reset to {ego_cam_pos}, {ego_cam_target}")
 
         self.compute_observations() # in some cases a simulation step might be required to refresh some obs (for example body positions)
+        # call the ego-vision
+        if self.common_step_counter % 50 == 0:
+            self._load_ego_vision_camera(self.common_step_counter//50)
 
         self.last_actions[:] = self.actions[:]
         self.last_dof_vel[:] = self.dof_vel[:]
         self.last_root_vel[:] = self.root_states[:, 7:13]
+
+
+
+
+    # convert tensor to pil image
+    def to_pil_image(self, tensor, mode='RGB'):
+        from PIL import Image
+        return Image.fromarray(
+            tensor.byte().permute(1, 2, 0).numpy(),
+            mode=mode
+        )
+
+    # load ego-vision camera
+    def _load_ego_vision_camera(self, pic_idx):
+        for i in range(self.num_envs):
+            ego_camera_tensor = self.gym.get_camera_image_gpu_tensor(self.sim, self.envs[i], self.ego_cameras[i], gymapi.IMAGE_COLOR)
+            torch_ego_camera_tensor = gymtorch.wrap_tensor(ego_camera_tensor)
+            
+            img = torch_ego_camera_tensor.permute(2, 0, 1)  # [4, H, W]
+            RGB = img[:3]    # [3, H, W]
+            alpha = img[3:].clone()  # [1, H, W]
+            img = torch.cat([RGB, alpha], dim=0)  # [4, H, W]
+
+            img = self.to_pil_image(img.cpu(), mode='RGBA')
+            img.save(f'ego_camera_env{pic_idx}.png')
+            print(f'Saved ego-vision camera image as ego_camera_env{pic_idx}.png')
+
+
+
+
 
     def check_termination(self):
         """ Check if environments need to be reset
@@ -526,6 +612,15 @@ class LeggedRobot(BaseTask):
                 2.3 create actor with these properties and add them to the env
              3. Store indices of different bodies of the robot
         """
+        # create ego-centric vision camera
+        camera_props = gymapi.CameraProperties()
+        camera_props.width = 128
+        camera_props.height = 128
+        camera_props.enable_tensors = True
+        self.ego_cameras = []
+
+
+
         asset_path = self.cfg.asset.file.format(LEGGED_GYM_ROOT_DIR=LEGGED_GYM_ROOT_DIR)
         asset_root = os.path.dirname(asset_path)
         asset_file = os.path.basename(asset_path)
@@ -591,6 +686,12 @@ class LeggedRobot(BaseTask):
             self.gym.set_actor_rigid_body_properties(env_handle, actor_handle, body_props, recomputeInertia=True)
             self.envs.append(env_handle)
             self.actor_handles.append(actor_handle)
+
+            # set ego-vision camera
+            ego_camera_handle = self.gym.create_camera_sensor(env_handle, camera_props)
+            self.gym.set_camera_location(ego_camera_handle, env_handle, gymapi.Vec3(0.0, 0.0, 0.5), gymapi.Vec3(1.0, 0.0, 0.0))
+            self.ego_cameras.append(ego_camera_handle)
+
 
         self.feet_indices = torch.zeros(len(feet_names), dtype=torch.long, device=self.device, requires_grad=False)
         for i in range(len(feet_names)):
