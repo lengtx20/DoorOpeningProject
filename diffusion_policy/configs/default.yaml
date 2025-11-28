@@ -1,0 +1,48 @@
+# Default configuration for diffusion policy training
+
+# Data
+data:
+  data_dir: "data"
+  obs_horizon: 2          # Number of observation frames to condition on
+  pred_horizon: 16        # Number of action frames to predict
+  action_horizon: 8       # Number of action frames to execute
+  augment: true          # Apply data augmentation
+
+# Model architecture
+model:
+  num_diffusion_iters: 100     # Number of diffusion denoising steps
+  down_dims: [256, 512, 1024]  # U-Net downsampling dimensions
+  obs_encoder_layers: [256, 256]  # Observation encoder MLP layers
+  diffusion_step_embed_dim: 128   # Timestep embedding dimension
+  kernel_size: 3                  # Convolution kernel size
+  n_groups: 8                     # GroupNorm groups
+
+# Training
+training:
+  batch_size: 64
+  epochs: 500
+  lr: 1.0e-4
+  weight_decay: 1.0e-6
+  num_workers: 4
+  seed: 42
+  save_freq: 50          # Save checkpoint every N epochs
+
+# Evaluation
+evaluation:
+  use_ddim: true         # Use DDIM sampling (faster)
+  ddim_steps: 10         # Number of DDIM steps
+  num_episodes: 10       # Number of episodes to evaluate
+  max_steps: 1000        # Maximum steps per episode
+
+# Environment (for evaluation)
+environment:
+  task: "g1"
+  num_envs: 1
+  sim_device: "cuda:0"
+  rl_device: "cuda:0"
+  headless: false
+
+# Output
+output:
+  output_dir: "outputs"
+  log_freq: 10           # Log every N batches

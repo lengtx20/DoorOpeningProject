@@ -1,0 +1,17 @@
+# Core dependencies
+torch>=2.0.0
+numpy>=1.24.0
+pandas>=2.0.0
+scipy>=1.10.0
+
+# Training and logging
+tensorboard>=2.13.0
+tqdm>=4.65.0
+pyyaml>=6.0
+
+# Data processing
+scikit-learn>=1.3.0
+
+# Simulation (if running eval_sim.py)
+# These are provided by unitree_rl_gym environment
+# isaacgym (proprietary, install separately)
