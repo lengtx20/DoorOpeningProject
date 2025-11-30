@@ -11,6 +11,11 @@ if TYPE_CHECKING:
     from isaaclab.envs import ManagerBasedEnv, ManagerBasedRLEnv
 
 
+
+def last_processed_action(env: ManagerBasedEnv) -> torch.Tensor:
+    """Returns the last action processed by the action manager."""
+    return env.action_manager.action
+
 def gait_phase(env: ManagerBasedRLEnv, period: float) -> torch.Tensor:
     if not hasattr(env, "episode_length_buf"):
         env.episode_length_buf = torch.zeros(env.num_envs, device=env.device, dtype=torch.long)

@@ -157,7 +157,7 @@ class G1WbcSceneCfg(InteractiveSceneCfg):
         prim_path="{ENV_REGEX_NS}/Door",
         spawn=sim_utils.UsdFileCfg(
             scale=(1.5, 1.5, 1.5),
-            usd_path="/path to repo/g1_wbc/source/g1_wbc/g1_wbc/assets/door/our_door.usd",
+            usd_path="/home/jason/DoorOpeningProject/g1_wbc/source/g1_wbc/g1_wbc/assets/door/our_door.usd",
             activate_contact_sensors=False,
             rigid_props=sim_utils.RigidBodyPropertiesCfg(
                 disable_gravity=False,

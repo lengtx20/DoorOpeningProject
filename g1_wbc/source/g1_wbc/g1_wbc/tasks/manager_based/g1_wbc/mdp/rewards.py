@@ -132,6 +132,8 @@ def base_height_l2(
     return torch.square(asset.data.root_pos_w[:, 2] - adjusted_target_height)
 
 
+
+
 """
 Manipulation rewards.
 """
@@ -399,3 +401,57 @@ def joint_mirror(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg, mirror_joint
         )
     reward *= 1 / len(mirror_joints) if len(mirror_joints) > 0 else 0
     return reward
+
+
+def track_base_pitch_l2(
+    env: ManagerBasedRLEnv,
+    command_name: str,
+    asset_cfg: SceneEntityCfg = SceneEntityCfg("robot"),
+) -> torch.Tensor:
+    """Reward tracking of base (root link) pitch using L2 squared kernel.
+
+    Args:
+        env: The environment instance.
+        std: The standard deviation for the exponential kernel.
+        command_name: The name of the command containing target pitch.
+        asset_cfg: Scene entity configuration for the robot root.
+
+    Returns:
+        torch.Tensor: Reward for pitch tracking, shape (num_envs,).
+    """
+    # extract asset
+    asset: RigidObject = env.scene[asset_cfg.name]
+    _, base_pitch, _ = math_utils.euler_xyz_from_quat(asset.data.root_quat_w)        # shape: (num_envs,)
+    base_pitch = base_pitch
+    target_pitch = env.command_manager.get_command(command_name).squeeze()        # shape: (num_envs,)
+    return torch.square(target_pitch - base_pitch)
+
+def processed_action_rate_l2(env: ManagerBasedRLEnv) -> torch.Tensor:
+    """Penalize the rate of change of the actions (jerky movements)."""
+    # NOTE: We use .action and .prev_action because standard Isaac Lab 
+    # does not track .prev_processed_action by default.
+    if env.common_step_counter % 50 == 0: # Print every 50 steps
+        print(f"Action Mean: {torch.mean(torch.abs(env.action_manager.action)).item()}")
+    return torch.sum(torch.square(env.action_manager.action - env.action_manager.prev_action), dim=1)
+
+
+def flat_roll_l2(env: ManagerBasedRLEnv, asset_cfg: SceneEntityCfg = SceneEntityCfg("robot")) -> torch.Tensor:
+    """Penalize non-flat base orientation along roll axis (x-axis rotation).
+
+    This is computed by penalizing the y-component of the projected gravity vector.
+    When the robot rolls (around x-axis), gravity projects onto the body y-axis.
+    """
+    asset: RigidObject = env.scene[asset_cfg.name]
+    return torch.square(asset.data.projected_gravity_b[:, 1])
+
+
+def undesired_contacts(env: ManagerBasedRLEnv, threshold: float, sensor_cfg: SceneEntityCfg) -> torch.Tensor:
+    """Penalize undesired contacts as the number of violations that are above a threshold."""
+    # extract the used quantities (to enable type-hinting)
+    contact_sensor: ContactSensor = env.scene.sensors[sensor_cfg.name]
+    # check if contact force is above threshold
+    net_contact_forces = contact_sensor.data.net_forces_w_history
+    is_contact = torch.max(torch.norm(net_contact_forces[:, :, sensor_cfg.body_ids], dim=-1), dim=1)[0] > threshold
+    # sum over contacts for each environment
+    return torch.sum(is_contact, dim=1)
+
