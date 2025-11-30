@@ -17,13 +17,16 @@ import numpy as np
 import pandas as pd
 import torch
 from torch.utils.data import Dataset
-from torchvision import transforms
 from PIL import Image
 from pathlib import Path
 from typing import Dict, List, Optional, Tuple
 from scipy.spatial.transform import Rotation
 import warnings
 import os
+
+# Don't import torchvision at module level - causes segfaults on macOS
+# Use manual transforms by default
+TORCHVISION_TRANSFORMS_AVAILABLE = False
 
 
 class G1ImageDoorOpeningDataset(Dataset):
@@ -79,20 +82,27 @@ class G1ImageDoorOpeningDataset(Dataset):
         # DOF dimension: 29 (positions only) or 58 (positions + velocities)
         self.dof_dim = 58 if include_velocities else 29
         
-        # Image transforms
-        self.image_transform = transforms.Compose([
-            transforms.Resize(image_size),
-            transforms.ToTensor(),
-            transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
-        ])
-        
-        if augment:
-            self.augment_transform = transforms.Compose([
-                transforms.ColorJitter(brightness=0.1, contrast=0.1, saturation=0.1),
-                transforms.RandomHorizontalFlip(p=0.5),
+        # Image transforms (use manual transforms to avoid torchvision segfaults on macOS)
+        # Always use manual transforms to avoid segfaults
+        use_torchvision_transforms = False
+        if use_torchvision_transforms:
+            self.image_transform = transforms.Compose([
+                transforms.Resize(image_size),
+                transforms.ToTensor(),
+                transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.229, 0.224, 0.225])
             ])
+            
+            if augment:
+                self.augment_transform = transforms.Compose([
+                    transforms.ColorJitter(brightness=0.1, contrast=0.1, saturation=0.1),
+                    transforms.RandomHorizontalFlip(p=0.5),
+                ])
+            else:
+                self.augment_transform = None
         else:
-            self.augment_transform = None
+            # Manual transforms without torchvision
+            self.image_transform = self._manual_transform
+            self.augment_transform = self._manual_augment if augment else None
 
         # Load all trajectories
         self.trajectories = self._load_trajectories()
@@ -105,6 +115,35 @@ class G1ImageDoorOpeningDataset(Dataset):
         print(f"Image directory: {self.image_dir}")
         print(f"DOF state dim: {self.dof_dim} ({'positions + velocities' if include_velocities else 'positions only'})")
         print(f"Action dim: 10")
+
+    def _manual_transform(self, img):
+        """Manual image transform without torchvision."""
+        import numpy as np
+        # Resize
+        img = img.resize(self.image_size, Image.BILINEAR)
+        # To tensor and normalize
+        img_array = np.array(img, dtype=np.float32) / 255.0
+        img_tensor = torch.from_numpy(img_array).permute(2, 0, 1)  # HWC -> CHW
+        # Normalize with ImageNet stats
+        mean = torch.tensor([0.485, 0.456, 0.406]).view(3, 1, 1)
+        std = torch.tensor([0.229, 0.224, 0.225]).view(3, 1, 1)
+        img_tensor = (img_tensor - mean) / std
+        return img_tensor
+    
+    def _manual_augment(self, img):
+        """Manual augmentation without torchvision."""
+        import random
+        # Color jitter (simple version)
+        if random.random() < 0.5:
+            # Random brightness
+            factor = 1.0 + random.uniform(-0.1, 0.1)
+            from PIL import ImageEnhance
+            enhancer = ImageEnhance.Brightness(img)
+            img = enhancer.enhance(factor)
+        # Horizontal flip
+        if random.random() < 0.5:
+            img = img.transpose(Image.FLIP_LEFT_RIGHT)
+        return img
 
     def _world_to_torso_frame(
         self,
@@ -136,12 +175,21 @@ class G1ImageDoorOpeningDataset(Dataset):
                 # Return black image if not found
                 return torch.zeros(3, self.image_size[0], self.image_size[1])
             
-            img = Image.open(image_path).convert('RGB')
+            # Open image with error handling
+            try:
+                img = Image.open(image_path).convert('RGB')
+            except Exception as e:
+                warnings.warn(f"Cannot open image {image_path}: {e}")
+                return torch.zeros(3, self.image_size[0], self.image_size[1])
             
             if self.augment_transform is not None:
                 img = self.augment_transform(img)
             
-            img = self.image_transform(img)
+            if callable(self.image_transform):
+                img = self.image_transform(img)
+            else:
+                # torchvision transform
+                img = self.image_transform(img)
             return img
         except Exception as e:
             warnings.warn(f"Error loading image {image_path}: {e}")

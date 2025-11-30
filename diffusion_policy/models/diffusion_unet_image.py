@@ -11,9 +11,16 @@ Output:
 
 import torch
 import torch.nn as nn
-import torchvision.models as models
 from typing import Dict, Optional, Tuple
+import platform
+import importlib.util
 from .conditional_unet1d import ConditionalUnet1D
+
+# Don't import torchvision at module level - it causes segfaults on macOS
+# Import it only when needed (lazy import)
+TORCHVISION_AVAILABLE = None  # Will be checked lazily
+
+from .image_encoder_simple import SimpleImageEncoder
 
 
 class ImageEncoder(nn.Module):
@@ -24,37 +31,93 @@ class ImageEncoder(nn.Module):
         image_size: Tuple[int, int] = (224, 224),
         feature_dim: int = 256,
         backbone: str = 'resnet18',
+        pretrained: bool = False,  # Default to False to avoid segfaults
+        use_simple: bool = False,  # Force simple encoder
     ):
         """
         Args:
             image_size: (height, width) of input images
             feature_dim: Output feature dimension
-            backbone: Backbone architecture ('resnet18', 'resnet34', 'resnet50')
+            backbone: Backbone architecture ('resnet18', 'resnet34', 'resnet50', 'simple')
+            pretrained: Whether to use pretrained weights (may cause segfault on some systems)
+            use_simple: Force use of simple CNN encoder (avoids torchvision)
         """
         super().__init__()
         
-        # Load pretrained ResNet backbone
-        if backbone == 'resnet18':
-            resnet = models.resnet18(pretrained=True)
-            backbone_dim = 512
-        elif backbone == 'resnet34':
-            resnet = models.resnet34(pretrained=True)
-            backbone_dim = 512
-        elif backbone == 'resnet50':
-            resnet = models.resnet50(pretrained=True)
-            backbone_dim = 2048
-        else:
-            raise ValueError(f"Unknown backbone: {backbone}")
+        # Use simple encoder only if explicitly forced
+        if use_simple or backbone == 'simple':
+            self.encoder = SimpleImageEncoder(
+                image_size=image_size,
+                feature_dim=feature_dim,
+            )
+            return
         
-        # Remove final fully connected layer
-        self.backbone = nn.Sequential(*list(resnet.children())[:-1])
+        # On macOS, default to simple encoder to avoid segfaults
+        # Segfaults can't be caught by try/except, so we must avoid torchvision on macOS
+        is_macos = platform.system() == 'Darwin'
+        force_torchvision = os.environ.get('FORCE_TORCHVISION', '0') == '1'
         
-        # Project to desired feature dimension
-        self.projection = nn.Sequential(
-            nn.Linear(backbone_dim, feature_dim),
-            nn.ReLU(),
-            nn.Linear(feature_dim, feature_dim),
-        )
+        if is_macos and not force_torchvision:
+            # On macOS, use simple encoder by default to avoid segfaults
+            # This MUST happen before any torchvision import attempt
+            print(f"⚠️  macOS detected: Using simple CNN encoder to avoid torchvision segfaults")
+            print(f"   (Set FORCE_TORCHVISION=1 to try ResNet, but it may segfault)")
+            self.encoder = SimpleImageEncoder(
+                image_size=image_size,
+                feature_dim=feature_dim,
+            )
+            return
+        
+        # Try to load ResNet backbone (lazy import of torchvision)
+        # Default behavior: try ResNet first, fallback to simple CNN if it fails
+        try:
+            # Lazy import - only import when actually needed
+            global TORCHVISION_AVAILABLE
+            if TORCHVISION_AVAILABLE is None:
+                try:
+                    import torchvision.models as models
+                    TORCHVISION_AVAILABLE = True
+                except (ImportError, OSError, RuntimeError, SystemError) as e:
+                    TORCHVISION_AVAILABLE = False
+                    import warnings
+                    warnings.warn(f"torchvision not available or causes segfault ({type(e).__name__}), falling back to simple CNN encoder")
+            
+            if not TORCHVISION_AVAILABLE:
+                raise ImportError("torchvision not available")
+            
+            import torchvision.models as models
+            
+            # Try to load the requested ResNet backbone
+            if backbone == 'resnet18':
+                resnet = models.resnet18(pretrained=pretrained)
+                backbone_dim = 512
+            elif backbone == 'resnet34':
+                resnet = models.resnet34(pretrained=pretrained)
+                backbone_dim = 512
+            elif backbone == 'resnet50':
+                resnet = models.resnet50(pretrained=pretrained)
+                backbone_dim = 2048
+            else:
+                raise ValueError(f"Unknown backbone: {backbone}")
+            
+            # Remove final fully connected layer
+            self.backbone = nn.Sequential(*list(resnet.children())[:-1])
+            
+            # Project to desired feature dimension
+            self.projection = nn.Sequential(
+                nn.Linear(backbone_dim, feature_dim),
+                nn.ReLU(),
+                nn.Linear(feature_dim, feature_dim),
+            )
+            self.encoder = None  # Use ResNet path
+        except Exception as e:
+            import warnings
+            warnings.warn(f"Failed to load {backbone} (error: {type(e).__name__}: {e}), falling back to simple CNN encoder")
+            # Fallback to simple encoder
+            self.encoder = SimpleImageEncoder(
+                image_size=image_size,
+                feature_dim=feature_dim,
+            )
         
     def forward(self, images: torch.Tensor) -> torch.Tensor:
         """
@@ -63,6 +126,11 @@ class ImageEncoder(nn.Module):
         Returns:
             features: (B, T, feature_dim) or (B*T, feature_dim)
         """
+        # If using simple encoder, delegate to it
+        if self.encoder is not None:
+            return self.encoder(images)
+        
+        # Otherwise use ResNet path
         original_shape = images.shape
         if images.ndim == 5:
             # (B, T, C, H, W) -> (B*T, C, H, W)
@@ -103,7 +171,8 @@ class DiffusionUNetImage(nn.Module):
         image_feature_dim: int = 256,
         dof_encoder_layers: Tuple[int, ...] = (256, 256),
         down_dims: Tuple[int, ...] = (256, 512, 1024),
-        image_backbone: str = 'resnet18',
+        image_backbone: str = 'resnet18',  # Default to ResNet, fallback to simple CNN if fails
+        image_pretrained: bool = False,  # Default to False to avoid segfaults
         **kwargs
     ):
         """
@@ -129,11 +198,16 @@ class DiffusionUNetImage(nn.Module):
         self.action_horizon = action_horizon
         self.num_diffusion_iters = num_diffusion_iters
 
+        # Extract use_simple_encoder from kwargs before passing to ImageEncoder
+        use_simple_encoder = kwargs.pop('use_simple_encoder', False)
+        
         # Image encoder (CNN)
         self.image_encoder = ImageEncoder(
             image_size=image_size,
             feature_dim=image_feature_dim,
             backbone=image_backbone,
+            pretrained=image_pretrained,
+            use_simple=use_simple_encoder,
         )
 
         # DOF state encoder (MLP)
@@ -155,6 +229,7 @@ class DiffusionUNetImage(nn.Module):
         obs_feature_dim = image_feature_dim + dof_feature_dim
 
         # Noise prediction network (U-Net)
+        # use_simple_encoder already popped from kwargs above
         self.noise_pred_net = ConditionalUnet1D(
             input_dim=action_dim,
             global_cond_dim=obs_feature_dim,

@@ -110,6 +110,36 @@ def main(args):
     torch.manual_seed(args.seed)
     np.random.seed(args.seed)
 
+    # Fix data directory path (handle relative paths)
+    data_dir = Path(args.data_dir)
+    if not data_dir.is_absolute():
+        # If relative, try relative to project root first, then current dir
+        project_root = Path(__file__).parent.parent.parent
+        if (project_root / data_dir).exists():
+            data_dir = project_root / data_dir
+        elif not data_dir.exists():
+            # Try relative to current working directory
+            data_dir = Path.cwd() / data_dir
+    
+    args.data_dir = str(data_dir.resolve())
+    
+    # Fix image directory path
+    if args.image_dir is None:
+        image_dir = data_dir / "images"
+    else:
+        image_dir = Path(args.image_dir)
+        if not image_dir.is_absolute():
+            image_dir = data_dir.parent / image_dir if (data_dir.parent / image_dir).exists() else Path.cwd() / image_dir
+    
+    args.image_dir = str(image_dir.resolve())
+    
+    print(f"Data directory: {args.data_dir}")
+    print(f"Image directory: {args.image_dir}")
+    
+    if not Path(args.data_dir).exists():
+        print(f"ERROR: Data directory does not exist: {args.data_dir}")
+        return
+
     # Device
     device = torch.device(args.device if torch.cuda.is_available() else 'cpu')
     print(f"Using device: {device}")
@@ -125,16 +155,22 @@ def main(args):
 
     # Load dataset
     print(f"\nLoading dataset from {args.data_dir}...")
-    dataset = G1ImageDoorOpeningDataset(
-        data_dir=args.data_dir,
-        image_dir=args.image_dir,
-        obs_horizon=args.obs_horizon,
-        pred_horizon=args.pred_horizon,
-        action_horizon=args.action_horizon,
-        include_velocities=args.include_velocities,
-        image_size=tuple(args.image_size),
-        augment=args.augment,
-    )
+    try:
+        dataset = G1ImageDoorOpeningDataset(
+            data_dir=args.data_dir,
+            image_dir=args.image_dir,
+            obs_horizon=args.obs_horizon,
+            pred_horizon=args.pred_horizon,
+            action_horizon=args.action_horizon,
+            include_velocities=args.include_velocities,
+            image_size=tuple(args.image_size),
+            augment=args.augment,
+        )
+    except Exception as e:
+        print(f"Error loading dataset: {e}")
+        import traceback
+        traceback.print_exc()
+        return
 
     # Split dataset
     train_size = int(0.9 * len(dataset))
@@ -148,20 +184,29 @@ def main(args):
     print(f"Train size: {train_size}, Val size: {val_size}")
 
     # Create dataloaders
+    # On macOS, num_workers > 0 can cause segfaults, so use 0 if on macOS
+    import platform
+    if platform.system() == 'Darwin':  # macOS
+        num_workers = 0
+        pin_memory = False
+    else:
+        num_workers = args.num_workers
+        pin_memory = args.device.startswith('cuda')  # Only pin memory for GPU
+    
     train_loader = DataLoader(
         train_dataset,
         batch_size=args.batch_size,
         shuffle=True,
-        num_workers=args.num_workers,
-        pin_memory=True,
+        num_workers=num_workers,
+        pin_memory=pin_memory,
     )
 
     val_loader = DataLoader(
         val_dataset,
         batch_size=args.batch_size,
         shuffle=False,
-        num_workers=args.num_workers,
-        pin_memory=True,
+        num_workers=num_workers,
+        pin_memory=pin_memory,
     )
 
     # Compute normalization statistics
@@ -208,7 +253,24 @@ def main(args):
 
     # Create model
     print("\nCreating diffusion policy model with image encoder...")
-    model = DiffusionUNetImage(
+    print(f"  - DOF dim: {dof_dim}")
+    print(f"  - Action dim: {action_dim}")
+    print(f"  - Image backbone: {args.image_backbone}")
+    print(f"  - Image pretrained: {args.image_pretrained}")
+    
+    # On macOS, force simple encoder unless explicitly overridden
+    import platform
+    is_macos = platform.system() == 'Darwin'
+    if is_macos and args.image_backbone != 'simple' and not args.use_simple_encoder:
+        import os
+        if os.environ.get('FORCE_TORCHVISION', '0') != '1':
+            print(f"  ⚠️  macOS detected: Overriding to simple encoder to avoid segfaults")
+            print(f"     (Set FORCE_TORCHVISION=1 to try ResNet, but it may segfault)")
+            args.image_backbone = 'simple'
+            args.use_simple_encoder = True
+    
+    try:
+        model = DiffusionUNetImage(
         dof_dim=dof_dim,
         action_dim=action_dim,
         obs_horizon=args.obs_horizon,
@@ -220,7 +282,17 @@ def main(args):
         dof_encoder_layers=tuple(args.dof_encoder_layers),
         down_dims=tuple(args.down_dims),
         image_backbone=args.image_backbone,
-    ).to(device)
+        image_pretrained=args.image_pretrained,
+        use_simple_encoder=args.use_simple_encoder,
+        )
+        print("  ✓ Model created")
+        model = model.to(device)
+        print(f"  ✓ Model moved to device: {device}")
+    except Exception as e:
+        print(f"✗ Model creation failed: {e}")
+        import traceback
+        traceback.print_exc()
+        return
 
     print(f"Model parameters: {sum(p.numel() for p in model.parameters()):,}")
 
@@ -327,8 +399,12 @@ if __name__ == "__main__":
     parser.add_argument('--image_feature_dim', type=int, default=256,
                         help='Feature dimension from image encoder')
     parser.add_argument('--image_backbone', type=str, default='resnet18',
-                        choices=['resnet18', 'resnet34', 'resnet50'],
-                        help='Image encoder backbone')
+                        choices=['resnet18', 'resnet34', 'resnet50', 'simple'],
+                        help='Image encoder backbone (default: resnet18, falls back to simple CNN if torchvision fails)')
+    parser.add_argument('--image_pretrained', action='store_true',
+                        help='Use pretrained ImageNet weights (may cause segfault on some systems)')
+    parser.add_argument('--use_simple_encoder', action='store_true',
+                        help='Force use of simple CNN encoder (avoids torchvision entirely)')
     parser.add_argument('--dof_encoder_layers', type=int, nargs='+', default=[256, 256],
                         help='DOF state encoder MLP layers')
     parser.add_argument('--down_dims', type=int, nargs='+', default=[256, 512, 1024],
@@ -349,8 +425,10 @@ if __name__ == "__main__":
     # System
     parser.add_argument('--device', type=str, default='cuda:0',
                         help='Device (cuda:0 or cpu)')
-    parser.add_argument('--num_workers', type=int, default=4,
-                        help='Number of data loader workers')
+    import platform
+    default_num_workers = 0 if platform.system() == 'Darwin' else 4
+    parser.add_argument('--num_workers', type=int, default=default_num_workers,
+                        help='Number of data loader workers (0 on macOS to avoid segfaults)')
     parser.add_argument('--seed', type=int, default=42,
                         help='Random seed')
     parser.add_argument('--save_freq', type=int, default=50,
