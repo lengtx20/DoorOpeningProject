@@ -1,4 +1,6 @@
-from .dataset import G1TrajectoryDataset
-from .normalizer import LinearNormalizer
+from .dataset import G1Dataset
+from .normalizer import Normalizer
 
-__all__ = ['G1TrajectoryDataset', 'LinearNormalizer']
+
+
+
