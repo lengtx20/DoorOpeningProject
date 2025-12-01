@@ -12,15 +12,16 @@ class G1Dataset(Dataset):
                  obs_horizon=2, 
                  pred_horizon=16,
                  use_proprio=True,
-                 image_resize_size=None):
+                 image_resize_size=None,
+                 sample_stride=5):
       
         self.root = dataset_root
         self.mode = mode
         self.obs_horizon = obs_horizon
         self.pred_horizon = pred_horizon
         self.use_proprio = use_proprio
+        self.sample_stride = sample_stride
 
-       
         if image_resize_size is not None:
             self.transform = transforms.Compose([
                 transforms.ToTensor(),
@@ -31,7 +32,6 @@ class G1Dataset(Dataset):
                 transforms.ToTensor()
             ])
 
-   
         split_path = os.path.join(self.root, "split.json")
         if not os.path.exists(split_path):
             raise FileNotFoundError(f"Split file not found at {split_path}")
@@ -49,10 +49,8 @@ class G1Dataset(Dataset):
             ep_path = os.path.join(self.root, ep_id)
             log_path = os.path.join(ep_path, "log_dict.npy")
             
-
             raw_dict = np.load(log_path, allow_pickle=True).item()
             
-    
             grasp_key = 'p_pressed' if 'p_pressed' in raw_dict else 'q_19'
             
             action_vec = np.concatenate([
@@ -68,21 +66,14 @@ class G1Dataset(Dataset):
                 raw_dict[grasp_key].reshape(-1, 1)
             ], axis=1).astype(np.float32)
 
-          
+ 
             proprio_vec = None
             if self.use_proprio:
                 q_cols = [f'q_{i}' for i in range(29)]
-                q_vec = np.stack([raw_dict[c] for c in q_cols], axis=-1).astype(np.float32)
                 
-                dq_cols = [f'dq_{i}' for i in range(29)]
-                if all(c in raw_dict for c in dq_cols):
-                    dq_vec = np.stack([raw_dict[c] for c in dq_cols], axis=-1).astype(np.float32)
-                else:
-                    dq_vec = np.zeros_like(q_vec)
-                
-                proprio_vec = np.concatenate([q_vec, dq_vec, action_vec], axis=1)
+                q_vec = np.stack([raw_dict[c] for c in q_cols], axis=-1).astype(np.float32) 
+                proprio_vec = q_vec 
 
-          
             world_pose_vec = np.concatenate([
                 raw_dict['pos_x'].reshape(-1, 1),
                 raw_dict['pos_y'].reshape(-1, 1),
@@ -102,7 +93,8 @@ class G1Dataset(Dataset):
 
             L = len(action_vec)
             max_start = L - (self.obs_horizon + self.pred_horizon) + 1
-            for t in range(max_start):
+            
+            for t in range(0, max_start, self.sample_stride):
                 self.indices.append((ep_id, t))
 
     def __len__(self):
@@ -118,28 +110,21 @@ class G1Dataset(Dataset):
             fname = f"{frame_idx:06d}.npy"
             fpath = os.path.join(self.root, ep_id, fname)
             
-        
             img_arr = np.load(fpath)
-            
-        
             img_t = self.transform(img_arr)
-            
             images_list.append(img_t)
         
         image_tensor = torch.stack(images_list)
 
-       
         act_start = start_t + (self.obs_horizon - 1)
         act_end = act_start + self.pred_horizon
         action = data['action_traj'][act_start : act_end]
-
 
         if self.use_proprio:
             agent_pos = data['proprio_traj'][start_t : start_t + self.obs_horizon]
             agent_pos_tensor = torch.from_numpy(agent_pos)
         else:
             agent_pos_tensor = torch.empty(0)
-
     
         current_pose_idx = start_t + self.obs_horizon - 1
         start_pose = data['pose_traj'][current_pose_idx]
@@ -147,7 +132,7 @@ class G1Dataset(Dataset):
         return {
             'image': image_tensor,
             'action': torch.from_numpy(action),
-            'agent_pos': agent_pos_tensor,
+            'agent_pos': agent_pos_tensor, 
             'start_pose': torch.from_numpy(start_pose)
         }
 

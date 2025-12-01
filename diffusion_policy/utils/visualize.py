@@ -127,7 +127,6 @@ def main():
 
     config = load_config()
     device = torch.device(config["device"] if torch.cuda.is_available() else "cpu")
-
     val_ds = G1Dataset(
         config["data_root"],
         mode='val',
@@ -320,7 +319,9 @@ def main():
         fargs=(data, lines, markers, args.gt_only),
         interval=100
     )
-
+    save_path = f"vis_sample_{idx}.gif"
+    ani.save(save_path, writer="pillow", fps=20)
+    print("Saved GIF to:", save_path)
     plt.show()
 
 if __name__ == "__main__":

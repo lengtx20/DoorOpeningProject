@@ -11,7 +11,7 @@ class DiffusionPolicy(nn.Module):
                  obs_horizon=2, 
                  pred_horizon=16,
                  vision_feature_dim=256,
-                 proprio_dim=68, 
+                 proprio_dim=29, 
                  use_proprio=True,
                  num_train_timesteps=100,
                  num_inference_steps=16): 

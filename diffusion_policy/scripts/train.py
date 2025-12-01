@@ -59,7 +59,8 @@ def main():
         obs_horizon=config["obs_horizon"],
         pred_horizon=config["pred_horizon"],
         use_proprio=config["use_proprio"],
-        image_resize_size=config.get("image_resize_size", None)
+        image_resize_size=config.get("image_resize_size", None),
+        sample_stride=config["sample_stride"]
     )
     
     val_ds = G1Dataset(
@@ -68,7 +69,8 @@ def main():
         obs_horizon=config["obs_horizon"],
         pred_horizon=config["pred_horizon"],
         use_proprio=config["use_proprio"],
-        image_resize_size=config.get("image_resize_size", None)
+        image_resize_size=config.get("image_resize_size", None),
+        sample_stride=config["sample_stride"]
     )
 
     train_loader = DataLoader(
