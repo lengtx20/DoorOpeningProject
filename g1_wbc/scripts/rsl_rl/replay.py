@@ -64,11 +64,10 @@ from isaaclab_rl.rsl_rl import (
 from isaaclab_tasks.utils import get_checkpoint_path
 from isaaclab_tasks.utils.hydra import hydra_task_config
 from rsl_rl.runners import OnPolicyRunner
-if args_cli.mode == "bc":
-    PROJECT_ROOT = Path(__file__).resolve().parents[3]
-    bc_root = PROJECT_ROOT / "bc_policy"
-    if str(bc_root) not in sys.path:
-        sys.path.insert(0, str(bc_root))
+PROJECT_ROOT = Path(__file__).resolve().parents[3]
+bc_root = PROJECT_ROOT / "bc_policy"
+if str(bc_root) not in sys.path:
+    sys.path.insert(0, str(bc_root))
 def load_gt_trajectory(traj_path: str):
     log_path = Path(traj_path) / "log_dict.npy"
     if not log_path.exists():
