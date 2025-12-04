@@ -1,0 +1,89 @@
+
+# data_root: "/home/jason/DoorOpeningProject/diffusion_policy/data/torso_rgb_logs"
+# checkpoint_dir: "/home/jason/DoorOpeningProject/diffusion_policy/checkpoints_img_stride5"
+
+# wandb_project: "g1_door_opening"
+# run_name: "diffusion_policy_cnn_backbone"
+
+# action_dim: 10
+# proprio_dim: 29
+# vision_feature_dim: 256
+# obs_horizon: 2
+# pred_horizon: 16
+# use_proprio: False
+# image_resize_size: [512, 512]
+# sample_stride: 5
+
+# device: "cuda"
+# batch_size: 32
+# num_epochs: 100
+# learning_rate: 1.0e-4
+# num_workers: 4
+
+
+# data_root: "/home/jason/DoorOpeningProject/diffusion_policy/data/torso_rgb_logs"
+# checkpoint_dir: "/home/jason/DoorOpeningProject/diffusion_policy/checkpoints_img_stride1"
+
+# wandb_project: "g1_door_opening"
+# run_name: "diffusion_policy_cnn_backbone"
+
+# action_dim: 10
+# proprio_dim: 29
+# vision_feature_dim: 256
+# obs_horizon: 2
+# pred_horizon: 16
+# use_proprio: False
+# image_resize_size: [512, 512]
+# sample_stride: 1
+
+# device: "cuda"
+# batch_size: 32
+# num_epochs: 100
+# learning_rate: 1.0e-4
+# num_workers: 4
+
+
+
+# data_root: "/home/jason/DoorOpeningProject/diffusion_policy/data/torso_rgb_logs"
+# checkpoint_dir: "/home/jason/DoorOpeningProject/diffusion_policy/checkpoints_img_dof29_stride1"
+
+# wandb_project: "g1_door_opening"
+# run_name: "diffusion_policy_cnn_backbone"
+
+# action_dim: 10
+# proprio_dim: 29
+# vision_feature_dim: 256
+# obs_horizon: 2
+# pred_horizon: 16
+# use_proprio: True
+# image_resize_size: [512, 512]
+# sample_stride: 1
+
+# device: "cuda"
+# batch_size: 32
+# num_epochs: 100
+# learning_rate: 1.0e-4
+# num_workers: 4
+
+
+
+data_root: "/home/jason/DoorOpeningProject/diffusion_policy/data/torso_rgb_logs"
+checkpoint_dir: "/home/jason/DoorOpeningProject/diffusion_policy/checkpoints_img_dof29_stride5"
+
+wandb_project: "g1_door_opening"
+run_name: "diffusion_policy_cnn_backbone"
+
+action_dim: 10
+proprio_dim: 29
+vision_feature_dim: 256
+obs_horizon: 2
+pred_horizon: 16
+use_proprio: True
+image_resize_size: [512, 512]
+sample_stride: 5
+
+device: "cuda"
+batch_size: 32
+num_epochs: 100
+learning_rate: 1.0e-4
+num_workers: 4
