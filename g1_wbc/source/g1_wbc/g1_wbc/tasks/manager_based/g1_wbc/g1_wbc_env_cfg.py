@@ -136,43 +136,43 @@ class G1WbcSceneCfg(InteractiveSceneCfg):
             convention="ros"),
     )
 
-    # object
-    door = ArticulationCfg(
-        actuators={'left_hinge': ImplicitActuatorCfg(
-            joint_names_expr=["left_hinge"],
-            stiffness=0.0,
-            damping=0.0,
-            # effort_limit_sim=0,
-            # velocity_limit_sim=10.0,
-            armature=0.05,
-        ),
-        'left_handle_joint': ImplicitActuatorCfg(
-            joint_names_expr=["left_handle_joint"],
-            stiffness=0.0,
-            damping=0.0,
-            # effort_limit_sim=0,
-            # velocity_limit_sim=10.0,
-            armature=0.05,
-        )},
-        prim_path="{ENV_REGEX_NS}/Door",
-        spawn=sim_utils.UsdFileCfg(
-            scale=(1.5, 1.5, 1.5),
-            usd_path="/path to repo/g1_wbc/source/g1_wbc/g1_wbc/assets/door/our_door.usd",
-            activate_contact_sensors=False,
-            rigid_props=sim_utils.RigidBodyPropertiesCfg(
-                disable_gravity=False,
-                retain_accelerations=False,
-                linear_damping=0.0,
-                angular_damping=0.0,
-                max_linear_velocity=1000.0,
-                max_angular_velocity=1000.0,
-                max_depenetration_velocity=1.0,
-            ),
-            articulation_props=sim_utils.ArticulationRootPropertiesCfg(
-                fix_root_link=True, enabled_self_collisions=False, solver_position_iteration_count=8, solver_velocity_iteration_count=4,
-            ),
-        ),
-    )
+
+    # door = ArticulationCfg(
+    #     actuators={'left_hinge': ImplicitActuatorCfg(
+    #         joint_names_expr=["left_hinge"],
+    #         stiffness=0.0,
+    #         damping=0.0,
+    #         # effort_limit_sim=0,
+    #         # velocity_limit_sim=10.0,
+    #         armature=0.05,
+    #     ),
+    #     'left_handle_joint': ImplicitActuatorCfg(
+    #         joint_names_expr=["left_handle_joint"],
+    #         stiffness=0.0,
+    #         damping=0.0,
+    #         # effort_limit_sim=0,
+    #         # velocity_limit_sim=10.0,
+    #         armature=0.05,
+    #     )},
+    #     prim_path="{ENV_REGEX_NS}/Door",
+    #     spawn=sim_utils.UsdFileCfg(
+    #         scale=(1.5, 1.5, 1.5),
+    #         usd_path="/home/jason/DoorOpeningProject/g1_wbc/source/g1_wbc/g1_wbc/assets/door/our_door.usd",
+    #         activate_contact_sensors=False,
+    #         rigid_props=sim_utils.RigidBodyPropertiesCfg(
+    #             disable_gravity=False,
+    #             retain_accelerations=False,
+    #             linear_damping=0.0,
+    #             angular_damping=0.0,
+    #             max_linear_velocity=1000.0,
+    #             max_angular_velocity=1000.0,
+    #             max_depenetration_velocity=1.0,
+    #         ),
+    #         articulation_props=sim_utils.ArticulationRootPropertiesCfg(
+    #             fix_root_link=True, enabled_self_collisions=False, solver_position_iteration_count=8, solver_velocity_iteration_count=4,
+    #         ),
+    #     ),
+    # )
 
     # door = RigidObjectCfg(
     #     prim_path="{ENV_REGEX_NS}/Door",
@@ -263,24 +263,22 @@ class EventCfg:
         },
     )
 
-    ### reset door position
-    reset_door = EventTerm(
-        func=mdp.reset_object_root_state_uniform_wrt_robot,
-        mode="reset",
-        params={
-            "asset_cfg": SceneEntityCfg("door"),
-            # "pose_range": {"x": (2.0, 2.0), "y": (0.1, 0.1), "z": (0, 0), "roll": (0, 0), "pitch": (0, 0), "yaw": (-math.pi/2, -math.pi/2)},
-            "pose_range": {"x": (2.0, 2.0), "y": (-0.9, -0.9), "z": (0, 0), "roll": (0, 0), "pitch": (0, 0), "yaw": (math.pi/2, math.pi/2)},
-            "velocity_range": {
-                "x": (0.0, 0.0),
-                "y": (0.0, 0.0),
-                "z": (0.0, 0.0),
-                "roll": (0.0, 0.0),
-                "pitch": (0.0, 0.0),
-                "yaw": (0.0, 0.0),
-            },
-        },
-    )
+    # reset_door = EventTerm(
+    #     func=mdp.reset_object_root_state_uniform_wrt_robot,
+    #     mode="reset",
+    #     params={
+    #         "asset_cfg": SceneEntityCfg("door"),
+    #         "pose_range": {"x": (2.0, 2.0), "y": (-0.9, -0.9), "z": (0, 0), "roll": (0, 0), "pitch": (0, 0), "yaw": (math.pi/2, math.pi/2)},
+    #         "velocity_range": {
+    #             "x": (0.0, 0.0),
+    #             "y": (0.0, 0.0),
+    #             "z": (0.0, 0.0),
+    #             "roll": (0.0, 0.0),
+    #             "pitch": (0.0, 0.0),
+    #             "yaw": (0.0, 0.0),
+    #         },
+    #     },
+    # )
 
     # interval
     push_robot = EventTerm(
@@ -571,16 +569,16 @@ class RewardsCfg:
     track_base_height = RewTerm(
         func=mdp.base_height_l2, weight=-10, params={"command_name": "target_base_height", "target_height": 0.76}
     )  # -8
-    track_base_pitch = RewTerm(
-        func=mdp.track_base_pitch_l2, weight=-7.0, params={"command_name": "target_base_pitch"}
-    )  # -5.0, -2.0
+    # track_base_pitch = RewTerm(
+    #     func=mdp.track_base_pitch_l2, weight=-7.0, params={"command_name": "target_base_pitch"}
+    # )  # -5.0, -2.0
 
     # -- base
     base_linear_velocity = RewTerm(func=mdp.lin_vel_z_l2, weight=-3.0)  # -2.0
     base_angular_velocity = RewTerm(func=mdp.ang_vel_xy_l2, weight=-0.05)
     joint_vel = RewTerm(func=mdp.joint_vel_l2, weight=-0.0015)  # -0.001
     joint_acc = RewTerm(func=mdp.joint_acc_l2, weight=-3.5e-7)  # -2.5e-7
-    action_rate = RewTerm(func=mdp.processed_action_rate_l2, weight=-0.08)  # -0.05
+    # action_rate = RewTerm(func=mdp.processed_action_rate_l2, weight=-0.08)  # -0.05
     dof_pos_limits = RewTerm(func=mdp.joint_pos_limits, weight=-3.0)  # -5.0
     energy = RewTerm(func=mdp.energy, weight=-4e-5)  # -2e-5
 
@@ -618,7 +616,7 @@ class RewardsCfg:
 
     # -- robot
     # flat_orientation_l2 = RewTerm(func=mdp.flat_orientation_l2, weight=-2.0)  # -5.0
-    flat_roll_l2 = RewTerm(func=mdp.flat_roll_l2, weight=-2.0)
+    # flat_roll_l2 = RewTerm(func=mdp.flat_roll_l2, weight=-2.0)
     # base_height = RewTerm(func=mdp.base_height_l2, weight=-8, params={"target_height": 0.76})  # -8
 
     # -- feet
@@ -681,9 +679,9 @@ class CurriculumCfg:
         mdp.base_height_levels,
         params={"reward_term_name": "track_base_height", "command_term_name": "target_base_height"},
     )
-    base_pitch_levels = CurrTerm(
-        mdp.base_pitch_levels, params={"reward_term_name": "track_base_pitch", "command_term_name": "target_base_pitch"}
-    )
+    # base_pitch_levels = CurrTerm(
+    #     mdp.base_pitch_levels, params={"reward_term_name": "track_base_pitch", "command_term_name": "target_base_pitch"}
+    # )
     lin_vel_cmd_levels = CurrTerm(
         mdp.lin_vel_cmd_levels,
         params={"reward_term_name": "track_lin_vel_xy", "command_term_name": "target_base_velocity"},
@@ -777,6 +775,8 @@ class G1WbcPlayEnvCfg(G1WbcEnvCfg):
         self.commands.target_right_hand_pos_in_base.ranges = self.commands.target_right_hand_pos_in_base.limit_ranges
         self.commands.target_right_hand_pos_in_base.resampling_time_range = (hand_resample_time, hand_resample_time)
         self.commands.target_base_height.ranges = self.commands.target_base_height.limit_ranges
-        # self.commands.target_base_height.ranges.value = (0.4, 0.4)
         self.commands.target_base_pitch.ranges = self.commands.target_base_pitch.limit_ranges
-        # self.commands.target_base_pitch.ranges.value = (0.8, 0.8)
+
+        # Disable base_pitch_levels curriculum since track_base_pitch reward is commented out
+        if hasattr(self.curriculum, 'base_pitch_levels'):
+            delattr(self.curriculum, 'base_pitch_levels')

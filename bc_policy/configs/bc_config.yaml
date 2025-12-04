@@ -1,0 +1,40 @@
+data_root: "/home/jason/DoorOpeningProject/diffusion_policy/data/torso_rgb_logs"
+checkpoint_dir: "/home/jason/DoorOpeningProject/bc_policy/checkpoints"
+
+action_dim: 10          # [left_hand_pos(3), right_hand_pos(3), base_vel(2), yaw_speed(1), grasp(1)]
+proprio_dim: 29         # Robot joint angles (q_0 to q_28)
+
+# Data loading
+obs_horizon: 2          # Number of past observations to use
+pred_horizon: 16        # Number of future actions to predict
+sample_stride: 1        # Sample every N-th timestep (1=no skip, 5=faster)
+
+# Model architecture
+hidden_dims: [512, 512, 512]  # MLP hidden layer dimensions
+activation: "relu"             # Activation function: relu, elu, gelu
+use_layer_norm: True          # Use layer normalization
+
+# Training settings
+device: "cuda"
+batch_size: 64
+num_epochs: 200
+learning_rate: 1.0e-3
+weight_decay: 1.0e-4
+grad_clip: 1.0
+
+# Optimizer
+optimizer: "adam"       # adam or adamw
+scheduler: "cosine"     # cosine, step, or none
+warmup_epochs: 10
+
+# Data augmentation (for robustness)
+noise_std: 0.0          # Add Gaussian noise to proprioception (0 = no noise)
+
+# Logging
+log_interval: 10        # Log every N batches
+eval_interval: 1        # Evaluate every N epochs
+save_interval: 5        # Save checkpoint every N epochs
+
+# DataLoader
+num_workers: 4
+pin_memory: True

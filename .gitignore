@@ -4,6 +4,7 @@
 *.pkl
 *.h5
 *.hdf5
+*.png
 
 # Training outputs
 outputs/
