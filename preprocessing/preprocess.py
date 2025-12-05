@@ -131,25 +131,28 @@ class RobotFKProcessor:
 
         return joint_order
 
-    def compute_fk(self, joint_positions: np.ndarray, base_pos: np.ndarray,
-                   base_quat: np.ndarray) -> Dict[str, Dict[str, np.ndarray]]:
+    def compute_fk(self, joint_positions: np.ndarray) -> Dict[str, Dict[str, np.ndarray]]:
         """
-        Compute forward kinematics for specified links.
+        Compute forward kinematics relative to the Pelvis frame.
+        
+        We force the base (Pelvis) to be at (0,0,0) with identity rotation.
+        This ensures the resulting link states are in the Pelvis frame.
 
         Args:
             joint_positions: Array of 29 joint positions
-            base_pos: Base position [x, y, z]
-            base_quat: Base quaternion [w, x, y, z]
 
         Returns:
             Dictionary with link names as keys and pos/rot as values
         """
-        # Set base pose
+        # --- MODIFICATION START ---
+        # Instead of moving the robot to the world position, pin it to the origin.
+        # Since 'pelvis' is the base link, this aligns Pelvis Frame with World Frame.
         p.resetBasePositionAndOrientation(
             self.robot_id,
-            base_pos,
-            [base_quat[1], base_quat[2], base_quat[3], base_quat[0]]  # PyBullet uses [x,y,z,w]
+            [0, 0, 0],       # Position: Origin
+            [0, 0, 0, 1]     # Orientation: Identity (x,y,z,w)
         )
+        # --- MODIFICATION END ---
 
         # Set joint positions
         joint_order = self.get_joint_order()
@@ -177,8 +180,9 @@ class RobotFKProcessor:
                 )
 
                 # Extract position and orientation
-                pos = np.array(link_state[0])  # World position
-                quat = np.array(link_state[1])  # World orientation [x, y, z, w]
+                # Because the base is at (0,0,0), these are now Pelvis-Relative
+                pos = np.array(link_state[0])  
+                quat = np.array(link_state[1]) # [x, y, z, w]
 
                 # Convert quaternion to rotation matrix
                 rot = Rotation.from_quat(quat).as_matrix()
@@ -208,16 +212,14 @@ class RobotFKProcessor:
         joint_cols = [f'q_{i}' for i in range(29)]
         joint_positions = df[joint_cols].values
 
-        # Extract base pose
-        base_pos = df[['pos_x', 'pos_y', 'pos_z']].values
-        base_quat = df[['quat_w', 'quat_x', 'quat_y', 'quat_z']].values
-
+        # --- MODIFICATION: We no longer need base_pos/base_quat for calculation ---
+        
         # Initialize arrays for FK data
         num_samples = len(df)
 
         # Left wrist
         left_wrist_pos = np.zeros((num_samples, 3))
-        left_wrist_rot = np.zeros((num_samples, 9))  # Flattened 3x3 rotation matrix
+        left_wrist_rot = np.zeros((num_samples, 9)) 
         left_wrist_quat = np.zeros((num_samples, 4))
 
         # Right wrist
@@ -227,10 +229,9 @@ class RobotFKProcessor:
 
         # Process each timestep
         for i in tqdm(range(num_samples), desc=f"Processing {Path(csv_path).name}"):
+            # --- MODIFICATION: Removed base_pos and base_quat arguments ---
             link_states = self.compute_fk(
-                joint_positions[i],
-                base_pos[i],
-                base_quat[i]
+                joint_positions[i]
             )
 
             # Store left wrist data
