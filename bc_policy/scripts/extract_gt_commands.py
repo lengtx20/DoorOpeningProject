@@ -31,9 +31,9 @@ def load_all_trajectories(data_root: str):
 def extract_commands(trajectories):
     print("\nExtracting commands from trajectories...")
     command_keys = [
-        'left_wrist_torso_pos_x', 'left_wrist_torso_pos_y', 'left_wrist_torso_pos_z',
-        'right_wrist_torso_pos_x', 'right_wrist_torso_pos_y', 'right_wrist_torso_pos_z',
-        'vel_body_x', 'vel_body_y',
+        'left_wrist_pos_x', 'left_wrist_pos_y', 'left_wrist_pos_z',
+        'right_wrist_pos_x', 'right_wrist_pos_y', 'right_wrist_pos_z',
+        'vel_x', 'vel_y',
         'yaw_speed',
         'p_pressed'
     ]

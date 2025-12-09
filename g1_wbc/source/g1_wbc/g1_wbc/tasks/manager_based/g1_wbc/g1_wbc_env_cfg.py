@@ -136,7 +136,6 @@ class G1WbcSceneCfg(InteractiveSceneCfg):
             convention="ros"),
     )
 
-
     # door = ArticulationCfg(
     #     actuators={'left_hinge': ImplicitActuatorCfg(
     #         joint_names_expr=["left_hinge"],
@@ -171,6 +170,10 @@ class G1WbcSceneCfg(InteractiveSceneCfg):
     #         articulation_props=sim_utils.ArticulationRootPropertiesCfg(
     #             fix_root_link=True, enabled_self_collisions=False, solver_position_iteration_count=8, solver_velocity_iteration_count=4,
     #         ),
+    #     ),
+    #     init_state=ArticulationCfg.InitialStateCfg(
+    #         pos=(-2.0, 0.0, 0.0),  # Place door closer to robot
+    #         rot=(0.7, 0.0, 0.0, 0.3420),  # 70 degree rotation around z-axis
     #     ),
     # )
 
@@ -513,7 +516,7 @@ class ObservationsCfg:
         # )
 
         def __post_init__(self):
-            self.history_length = 5
+            self.history_length = 10
 
     # privileged observations
     critic: CriticCfg = CriticCfg()
@@ -775,8 +778,6 @@ class G1WbcPlayEnvCfg(G1WbcEnvCfg):
         self.commands.target_right_hand_pos_in_base.ranges = self.commands.target_right_hand_pos_in_base.limit_ranges
         self.commands.target_right_hand_pos_in_base.resampling_time_range = (hand_resample_time, hand_resample_time)
         self.commands.target_base_height.ranges = self.commands.target_base_height.limit_ranges
+        # self.commands.target_base_height.ranges.value = (0.4, 0.4)
         self.commands.target_base_pitch.ranges = self.commands.target_base_pitch.limit_ranges
-
-        # Disable base_pitch_levels curriculum since track_base_pitch reward is commented out
-        if hasattr(self.curriculum, 'base_pitch_levels'):
-            delattr(self.curriculum, 'base_pitch_levels')
+        # self.commands.target_base_pitch.ranges.value = (0.8, 0.8)

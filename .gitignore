@@ -68,3 +68,8 @@ events.out.tfevents.*
 *.bak
 *.swp
 *~
+
+data/logs_csv_raw
+data/processed_data
+data/video_traj_raw
+checkpoints_*/

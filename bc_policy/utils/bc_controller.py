@@ -87,11 +87,11 @@ def load_bc_policy_and_normalizer(checkpoint_path: str, device: str = "cuda:0"):
     import sys
     import os
     from pathlib import Path
-    bc_root = Path(checkpoint_path).parent.parent
-    if str(bc_root) not in sys.path:
-        sys.path.insert(0, str(bc_root))
-    from bc_policy.models import BCPolicy
-    from bc_policy.utils import Normalizer
+    project_root = Path(checkpoint_path).parent.parent.parent
+    if str(project_root) not in sys.path:
+        sys.path.insert(0, str(project_root))
+    from bc_policy.models.bc_policy import BCPolicy
+    from data.dataset import Normalizer
     print(f"[INFO] Loading BC policy from: {checkpoint_path}")
     checkpoint = torch.load(checkpoint_path, map_location=device)
     config = checkpoint['config']
@@ -127,7 +127,7 @@ if __name__ == "__main__":
     import sys
     sys.path.insert(0, '/home/jason/DoorOpeningProject')
     from bc_policy.models import BCPolicy
-    from bc_policy.utils import Normalizer
+    from data.dataset import Normalizer
     print("Testing BC Controller...")
     model = BCPolicy(
         proprio_dim=29,

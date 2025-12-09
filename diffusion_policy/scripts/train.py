@@ -1,4 +1,3 @@
-
 import os
 import sys
 import yaml
@@ -12,28 +11,47 @@ from torch.utils.data import DataLoader
 from torch.optim import Adam, AdamW
 from torch.optim.lr_scheduler import CosineAnnealingLR, StepLR
 from torch.utils.tensorboard import SummaryWriter
-sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../..'))
-from bc_policy.models import BCPolicy, BCPolicyWithHistory
-from data.dataset import G1Dataset, get_data_stats, Normalizer
 
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../..'))
+
+from diffusion_policy.models import DiffusionPolicy
+from data.dataset import G1Dataset, get_data_stats, Normalizer
 
 
 def train_epoch(model, dataloader, normalizer, optimizer, device, grad_clip=None, writer=None, epoch=0):
     model.train()
     total_loss = 0.0
     num_batches = 0
+
     pbar = tqdm(dataloader, desc="Training")
     for batch_idx, batch in enumerate(pbar):
         batch = {k: v.to(device) for k, v in batch.items()}
+
+        # Save raw stage (don't normalize one-hot encoding)
+        raw_stage = batch.get('stage', None)
+
         batch = normalizer.normalize(batch)
-        loss = model.compute_loss(batch)
+
+        # Restore raw stage
+        if raw_stage is not None:
+            batch['stage'] = raw_stage
+
+        # Forward pass
         optimizer.zero_grad()
+        loss = model.compute_loss(batch)
+
+        # Backprop
         loss.backward()
+
         if grad_clip is not None:
             nn.utils.clip_grad_norm_(model.parameters(), grad_clip)
+
         optimizer.step()
+
+        # Track losses
         total_loss += loss.item()
         num_batches += 1
+
         pbar.set_postfix({'loss': loss.item()})
 
         # Log to TensorBoard
@@ -49,33 +67,50 @@ def eval_epoch(model, dataloader, normalizer, device):
     model.eval()
     total_loss = 0.0
     num_batches = 0
+
     with torch.no_grad():
         pbar = tqdm(dataloader, desc="Evaluating")
         for batch in pbar:
             batch = {k: v.to(device) for k, v in batch.items()}
+
+            # Save raw stage (don't normalize one-hot encoding)
+            raw_stage = batch.get('stage', None)
+
             batch = normalizer.normalize(batch)
+
+            # Restore raw stage
+            if raw_stage is not None:
+                batch['stage'] = raw_stage
+
             loss = model.compute_loss(batch)
+
             total_loss += loss.item()
             num_batches += 1
+
             pbar.set_postfix({'loss': loss.item()})
+
     avg_loss = total_loss / num_batches
     return avg_loss
 
 
-    
 def main():
     parser = argparse.ArgumentParser()
     parser.add_argument('--config', type=str, required=True, help='Path to config file')
     parser.add_argument('--resume', type=str, default=None, help='Path to checkpoint to resume from')
     args = parser.parse_args()
+
     with open(args.config, 'r') as f:
         config = yaml.safe_load(f)
+
     print("Configuration:")
     for key, value in config.items():
         print(f"  {key}: {value}")
+
     device = torch.device(config['device'] if torch.cuda.is_available() else 'cpu')
     print(f"\nUsing device: {device}")
+
     os.makedirs(config['checkpoint_dir'], exist_ok=True)
+
     print("\nCreating datasets...")
 
     train_dataset = G1Dataset(
@@ -91,6 +126,7 @@ def main():
         temporal_dropout=config.get('temporal_dropout', 0.0),
         action_noise_std=config.get('action_noise_std', 0.0),
     )
+
     val_dataset = G1Dataset(
         dataset_root=config['data_root'],
         mode='val',
@@ -104,6 +140,7 @@ def main():
         temporal_dropout=0.0,
         action_noise_std=0.0,
     )
+
     train_loader = DataLoader(
         train_dataset,
         batch_size=config['batch_size'],
@@ -111,6 +148,7 @@ def main():
         num_workers=config['num_workers'],
         pin_memory=config['pin_memory'],
     )
+
     val_loader = DataLoader(
         val_dataset,
         batch_size=config['batch_size'],
@@ -118,25 +156,40 @@ def main():
         num_workers=config['num_workers'],
         pin_memory=config['pin_memory'],
     )
+
     print(f"Train dataset: {len(train_dataset)} samples")
     print(f"Val dataset: {len(val_dataset)} samples")
+
     print("\nComputing normalization statistics...")
     stats = get_data_stats(train_loader)
     normalizer = Normalizer(stats)
+
     normalizer_path = os.path.join(config['checkpoint_dir'], 'normalizer.pth')
     normalizer.save(normalizer_path)
-    print("\nCreating model...")
-    model = BCPolicy(
+
+    print("\nCreating Diffusion model...")
+    model = DiffusionPolicy(
         proprio_dim=config['proprio_dim'],
+        stage_dim=config.get('stage_dim', 5),
         action_dim=config['action_dim'],
         obs_horizon=config['obs_horizon'],
         pred_horizon=config['pred_horizon'],
-        hidden_dims=config['hidden_dims'],
-        activation=config['activation'],
-        use_layer_norm=config['use_layer_norm'],
+        action_horizon=config['action_horizon'],
+        obs_embedding_dim=config.get('obs_embedding_dim', 256),
+        diffusion_step_embed_dim=config.get('diffusion_step_embed_dim', 128),
+        down_dims=config.get('down_dims', [256, 512, 1024]),
+        kernel_size=config.get('kernel_size', 5),
+        n_groups=config.get('n_groups', 8),
+        num_diffusion_iters=config.get('num_diffusion_iters', 100),
+        num_inference_steps=config.get('num_inference_steps', 10),
+        beta_schedule=config.get('beta_schedule', 'squaredcos_cap_v2'),
+        use_image=config.get('use_image', False),
+        vision_feature_dim=config.get('vision_feature_dim', 512),
     ).to(device)
+
     num_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
     print(f"Model parameters: {num_params:,}")
+
     if config['optimizer'] == 'adam':
         optimizer = Adam(
             model.parameters(),
@@ -151,6 +204,7 @@ def main():
         )
     else:
         raise ValueError(f"Unknown optimizer: {config['optimizer']}")
+
     if config['scheduler'] == 'cosine':
         scheduler = CosineAnnealingLR(
             optimizer,
@@ -162,6 +216,7 @@ def main():
         scheduler = None
     else:
         raise ValueError(f"Unknown scheduler: {config['scheduler']}")
+
     start_epoch = 0
     best_val_loss = float('inf')
     if args.resume:
@@ -185,10 +240,12 @@ def main():
     print("\nStarting training...")
     print(f"Total epochs: {config['num_epochs']}")
     print(f"Warmup epochs: {config['warmup_epochs']}")
+
     for epoch in range(start_epoch, config['num_epochs']):
         print(f"\n{'='*60}")
         print(f"Epoch {epoch+1}/{config['num_epochs']}")
         print(f"{'='*60}")
+
         if epoch < config['warmup_epochs']:
             warmup_factor = (epoch + 1) / config['warmup_epochs']
             for param_group in optimizer.param_groups:
@@ -216,6 +273,7 @@ def main():
 
             # Log validation loss
             writer.add_scalar('val/loss', val_loss, epoch)
+
             if val_loss < best_val_loss:
                 best_val_loss = val_loss
                 best_path = os.path.join(config['checkpoint_dir'], 'best.pth')
@@ -229,7 +287,8 @@ def main():
                     'best_val_loss': best_val_loss,
                     'config': config,
                 }, best_path)
-                print(f"[INFO] Best checkpoint saved: {best_path}")
+                print(f"✓ Best checkpoint saved: {best_path}")
+
         if (epoch + 1) % config['save_interval'] == 0:
             epoch_path = os.path.join(config['checkpoint_dir'], f'epoch_{epoch+1}.pth')
             torch.save({
@@ -243,6 +302,7 @@ def main():
                 'config': config,
             }, epoch_path)
             print(f"Checkpoint saved: {epoch_path}")
+
         last_path = os.path.join(config['checkpoint_dir'], 'last.pth')
         torch.save({
             'epoch': epoch,
@@ -254,6 +314,7 @@ def main():
             'best_val_loss': best_val_loss,
             'config': config,
         }, last_path)
+
         if scheduler and epoch >= config['warmup_epochs']:
             scheduler.step()
             print(f"Learning rate: {optimizer.param_groups[0]['lr']:.6f}")
@@ -267,5 +328,7 @@ def main():
     print(f"Checkpoints saved to: {config['checkpoint_dir']}")
     print(f"TensorBoard logs saved to: {tensorboard_dir}")
     print("="*60)
+
+
 if __name__ == "__main__":
     main()

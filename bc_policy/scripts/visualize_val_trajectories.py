@@ -19,14 +19,14 @@ def load_gt_trajectory(traj_path: str):
     T = len(log_dict['timestamp'])
     proprio = np.stack([log_dict[f'q_{i}'] for i in range(29)], axis=1)  
     gt_commands = np.stack([
-        log_dict['left_wrist_torso_pos_x'],
-        log_dict['left_wrist_torso_pos_y'],
-        log_dict['left_wrist_torso_pos_z'],
-        log_dict['right_wrist_torso_pos_x'],
-        log_dict['right_wrist_torso_pos_y'],
-        log_dict['right_wrist_torso_pos_z'],
-        log_dict['vel_body_x'],
-        log_dict['vel_body_y'],
+        log_dict['left_wrist_pos_x'],
+        log_dict['left_wrist_pos_y'],
+        log_dict['left_wrist_pos_z'],
+        log_dict['right_wrist_pos_x'],
+        log_dict['right_wrist_pos_y'],
+        log_dict['right_wrist_pos_z'],
+        log_dict['vel_x'],
+        log_dict['vel_y'],
         log_dict['yaw_speed'],
         log_dict['p_pressed'].astype(np.float32),
     ], axis=1)  

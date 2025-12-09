@@ -4,7 +4,7 @@ import sys
 import numpy as np
 from pathlib import Path
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), '../..'))
-from bc_policy.utils import BCDataset
+from data.dataset import G1Dataset
 import torch
 from torch.utils.data import DataLoader
 def analyze_command_ranges(data_root: str):
@@ -12,12 +12,17 @@ def analyze_command_ranges(data_root: str):
     print("CHECKING LOGGED COMMAND RANGES vs WBC TRAINING RANGES")
     print("="*80)
     print(f"\nLoading dataset from: {data_root}")
-    dataset = BCDataset(
+    dataset = G1Dataset(
         dataset_root=data_root,
         mode='train',
         obs_horizon=2,
         pred_horizon=16,
+        use_proprio=True,
+        use_image=False,
         sample_stride=1,
+        noise_std=0.0,
+        temporal_dropout=0.0,
+        action_noise_std=0.0,
     )
     print(f"Dataset size: {len(dataset)} samples")
     print("\nCollecting actions from all samples...")
