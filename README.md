@@ -13,7 +13,7 @@ python act_policy/scripts/train.py \
 
 ```bash
 python act_policy/scripts/visualize_pred.py \
---checkpoint act_policy/checkpoints_stride_1_obs_2_pred_8_stage_5/best.pth \
+--checkpoint act_policy/checkpoints_stride_1_obs_2_pred_16_stage_5/best.pth \
 --mode full_stage 
 
 ```
